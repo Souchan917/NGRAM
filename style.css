@@ -1051,6 +1051,35 @@ header h1 {
     background: rgba(255, 107, 107, 0.1);
 }
 
+/* モールス信号の単語表示エリア */
+.morse-word-display {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid #333333;
+    border-radius: 0;
+    padding: 1.5rem;
+    margin: 2rem 0;
+    text-align: center;
+}
+
+.current-word-info {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.current-word-info p {
+    margin: 0;
+    font-size: 0.9rem;
+    color: #cccccc;
+    font-weight: 300;
+}
+
+.current-word-info span {
+    color: #ffffff;
+    font-weight: 400;
+    font-family: 'SF Mono', 'Monaco', 'Menlo', monospace;
+}
+
 /* 横向き時の調整 */
 @media (orientation: landscape) and (max-height: 500px) {
     .puzzle-content {

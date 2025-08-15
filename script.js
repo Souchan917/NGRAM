@@ -295,38 +295,7 @@ function initGame() {
             console.log('✅ チュートリアル次へボタンにイベントリスナーを追加');
         }
         
-        // ステージ6: モールス信号関連のイベントリスナー
-        const playMorseBtn = document.getElementById('play-morse-btn');
-        const morseInput = document.getElementById('morse-input');
-        const submitMorseBtn = document.getElementById('submit-morse-btn');
-        
-        if (playMorseBtn) {
-            playMorseBtn.addEventListener('click', function(e) {
-                e.preventDefault();
-                console.log('🔘 モールス信号再生ボタンクリック');
-                if (currentMorseWord) {
-                    playMorseVibration(currentMorseWord);
-                }
-            });
-            console.log('✅ モールス信号再生ボタンにイベントリスナーを追加');
-        }
-        
-        if (morseInput) {
-            morseInput.addEventListener('input', function(e) {
-                console.log('📝 モールス信号入力:', e.target.value);
-                checkMorseInput();
-            });
-            console.log('✅ モールス信号入力フィールドにイベントリスナーを追加');
-        }
-        
-        if (submitMorseBtn) {
-            submitMorseBtn.addEventListener('click', function(e) {
-                e.preventDefault();
-                console.log('🔘 モールス信号送信ボタンクリック');
-                checkMorseInput();
-            });
-            console.log('✅ モールス信号送信ボタンにイベントリスナーを追加');
-        }
+        // 旧モールス信号イベントリスナーは削除済み（新ステージシステムで処理）
         
         // ステージ表示を更新
         updateStageDisplay();
@@ -343,6 +312,11 @@ function initGame() {
         stageStates.currentWord = generateNewMorseWord();
         currentMorseWord = stageStates.currentWord; // 互換性のため
         console.log('📡 初期モールス信号の単語:', stageStates.currentWord);
+        
+        // ステージが作成された後にモールス信号UIを更新
+        setTimeout(() => {
+            updateMorseStageUI(6, stageStates.currentWord);
+        }, 500);
         
         // バイブレーション機能チェック
         const vibrationSupported = checkVibrationSupport();
@@ -1237,6 +1211,13 @@ function createMorseStageHTML(stageNum) {
                     </div>
                 </div>
                 
+                <div class="morse-word-display">
+                    <div class="current-word-info">
+                        <p>現在の単語: <span id="morse-current-word-${stageNum}">???</span></p>
+                        <p>文字数: <span id="morse-word-length-${stageNum}">?</span>文字</p>
+                    </div>
+                </div>
+                
                 <div class="morse-input-section">
                     <label for="morse-input-${stageNum}" class="morse-label">解読した英単語を入力:</label>
                     <input type="text" id="morse-input-${stageNum}" class="morse-input" placeholder="例: SOS" maxlength="8" autocomplete="off">
@@ -1765,9 +1746,12 @@ function checkVibrationSupport() {
 }
 
 // 視覚的フィードバック要素を更新
-function updateVisualFeedback(type, letter = '') {
-    const morseVisual = document.getElementById('morse-visual');
-    if (!morseVisual) return;
+function updateVisualFeedback(type, letter = '', stageNum = 6) {
+    const morseVisual = document.getElementById(`morse-visual-${stageNum}`);
+    if (!morseVisual) {
+        console.warn(`⚠️ morse-visual-${stageNum} が見つかりません`);
+        return;
+    }
     
     switch (type) {
         case 'dot':
@@ -1811,9 +1795,9 @@ async function playMorseVibration(word, stageNum = 6) {
     isPlayingMorse = true;
     currentMorseWord = word;
     
-    // UI更新
-    const morseStatus = document.getElementById('morse-status');
-    const playButton = document.getElementById('play-morse-btn');
+    // UI更新（ステージ番号に対応）
+    const morseStatus = document.getElementById(`morse-status-${stageNum}`);
+    const playButton = document.getElementById(`play-morse-btn-${stageNum}`);
     
     if (morseStatus) morseStatus.textContent = `🎵 再生中: ${word}`;
     if (playButton) {
@@ -1860,7 +1844,7 @@ async function playMorseVibration(word, stageNum = 6) {
         console.log('一括バイブレーション結果:', vibrationResult);
         
         // 視覚的フィードバックを並行して実行
-        playVisualPattern(visualPattern);
+        playVisualPattern(visualPattern, stageNum);
         
         // 再生時間を計算
         const totalDuration = vibrationPattern.reduce((sum, duration) => sum + duration, 0);
@@ -1869,7 +1853,7 @@ async function playMorseVibration(word, stageNum = 6) {
     } catch (error) {
         console.error('❌ モールス信号再生エラー:', error);
         // エラー時は視覚的再生のみ
-        await playMorseVisualOnly(word);
+        await playMorseVisualOnly(word, stageNum);
     }
     
     isPlayingMorse = false;
@@ -1880,16 +1864,16 @@ async function playMorseVibration(word, stageNum = 6) {
         playButton.disabled = false;
         playButton.textContent = '📳 モールス信号を再生';
     }
-    updateVisualFeedback('clear');
+    updateVisualFeedback('clear', '', stageNum);
     
     console.log('✅ モールス信号再生完了');
 }
 
 // バイブレーション非対応時の視覚的再生
-async function playMorseVisualOnly(word) {
+async function playMorseVisualOnly(word, stageNum = 6) {
     console.log('👁️ 視覚的モールス信号再生:', word);
     
-    const morseStatus = document.getElementById('morse-status');
+    const morseStatus = document.getElementById(`morse-status-${stageNum}`);
     if (morseStatus) morseStatus.textContent = `👁️ 視覚再生中: ${word}`;
     
     for (let i = 0; i < word.length; i++) {
@@ -1901,27 +1885,27 @@ async function playMorseVisualOnly(word) {
                 const signal = pattern[j];
                 
                 if (signal === '.') {
-                    updateVisualFeedback('dot');
+                    updateVisualFeedback('dot', '', stageNum);
                     await sleep(VIBRATION_SHORT);
                 } else if (signal === '-') {
-                    updateVisualFeedback('dash');
+                    updateVisualFeedback('dash', '', stageNum);
                     await sleep(VIBRATION_LONG);
                 }
                 
-                updateVisualFeedback('pause');
+                updateVisualFeedback('pause', '', stageNum);
                 await sleep(VIBRATION_PAUSE);
             }
             
-            updateVisualFeedback('letter', letter);
+            updateVisualFeedback('letter', letter, stageNum);
             await sleep(VIBRATION_LETTER_PAUSE);
         }
     }
 }
 
 // 視覚的パターン再生
-async function playVisualPattern(pattern) {
+async function playVisualPattern(pattern, stageNum = 6) {
     for (const item of pattern) {
-        updateVisualFeedback(item.type, item.letter);
+        updateVisualFeedback(item.type, item.letter, stageNum);
         await sleep(item.duration);
     }
 }
@@ -1934,7 +1918,36 @@ function sleep(ms) {
 // 新しいモールス信号の単語を選択
 function generateNewMorseWord() {
     const randomIndex = Math.floor(Math.random() * morseWords.length);
-    return morseWords[randomIndex];
+    const selectedWord = morseWords[randomIndex];
+    console.log('📡 新しいモールス信号単語生成:', selectedWord);
+    return selectedWord;
+}
+
+// モールス信号ステージのUI更新
+function updateMorseStageUI(stageNum, word) {
+    console.log(`🎯 モールス信号UI更新: ステージ${stageNum}, 単語: ${word}`);
+    
+    const morseCurrentWord = document.getElementById(`morse-current-word-${stageNum}`);
+    const morseWordLength = document.getElementById(`morse-word-length-${stageNum}`);
+    const morseHint = document.getElementById(`morse-hint-${stageNum}`);
+    const morseStatus = document.getElementById(`morse-status-${stageNum}`);
+    
+    if (morseCurrentWord) {
+        morseCurrentWord.textContent = '???'; // 答えは隠す
+    }
+    if (morseWordLength) {
+        morseWordLength.textContent = word.length;
+    }
+    if (morseHint) {
+        morseHint.textContent = `💡 ヒント: ${word.length}文字の英単語です`;
+        morseHint.style.color = '#666666';
+    }
+    if (morseStatus) {
+        morseStatus.textContent = 'モールス信号を再生してから入力してください';
+        morseStatus.style.color = '';
+    }
+    
+    console.log(`✅ モールス信号UI更新完了: ${word} (${word.length}文字)`);
 }
 
 // プレイヤーの入力をチェック
@@ -2262,18 +2275,43 @@ function resetStageState() {
                 // モールス信号ステージのリセット
                 isPlayingMorse = false;
                 stageStates.currentWord = generateNewMorseWord();
+                currentMorseWord = stageStates.currentWord; // 互換性のため
                 console.log('🔄 モールス信号の新しい単語:', stageStates.currentWord);
                 
+                // UI要素をリセット
                 const morseInput = document.getElementById(`morse-input-${currentStage}`);
                 const morseHint = document.getElementById(`morse-hint-${currentStage}`);
                 const morseStatus = document.getElementById(`morse-status-${currentStage}`);
+                const morseCurrentWord = document.getElementById(`morse-current-word-${currentStage}`);
+                const morseWordLength = document.getElementById(`morse-word-length-${currentStage}`);
+                const playButton = document.getElementById(`play-morse-btn-${currentStage}`);
                 
                 if (morseInput) {
                     morseInput.value = '';
                     morseInput.style.borderColor = '#333333';
+                    morseInput.style.backgroundColor = 'transparent';
                 }
-                if (morseHint) morseHint.textContent = '';
-                if (morseStatus) morseStatus.textContent = '新しいモールス信号を再生する準備ができました';
+                if (morseHint) {
+                    morseHint.textContent = `💡 ヒント: ${stageStates.currentWord.length}文字の英単語です`;
+                    morseHint.style.color = '#666666';
+                }
+                if (morseStatus) {
+                    morseStatus.textContent = '新しいモールス信号を再生する準備ができました';
+                    morseStatus.style.color = '';
+                }
+                if (morseCurrentWord) {
+                    morseCurrentWord.textContent = '???';
+                }
+                if (morseWordLength) {
+                    morseWordLength.textContent = stageStates.currentWord.length;
+                }
+                if (playButton) {
+                    playButton.disabled = false;
+                    playButton.textContent = '📳 モールス信号を再生';
+                }
+                
+                // 視覚フィードバックをクリア
+                updateVisualFeedback('clear', '', currentStage);
                 break;
                 
             case 'light':
@@ -2397,6 +2435,13 @@ function goToStage(stageNumber) {
     
     // ステージ状態リセット
     resetStageState();
+    
+    // モールス信号ステージの場合、UIを更新
+    if (currentStage === 6) {
+        setTimeout(() => {
+            updateMorseStageUI(6, stageStates.currentWord);
+        }, 100);
+    }
     
     // デバッグパネルの現在ステージ表示を更新
     if (debugMode) {
