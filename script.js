@@ -135,11 +135,10 @@ const STAGE_DEFINITIONS = {
     },
     8: {
         title: 'ステージ 8',
-        description: '砂時計チャレンジ',
-        subtitle: '中央の砂時計が重力方向に砂を落とします。デバイスをひっくり返すと砂の落ちる向きも反転します。',
-        details: '砂が下部にすべて落ち切ったらクリアです（約8秒）',
+        description: '砂時計',
+        subtitle: 'デバイスの傾きに応じて砂が落ちます。ひっくり返すと砂の流れも反転します。',
+        details: '全ての砂が下側に溜まったらクリア',
         type: 'hourglass',
-        sandDuration: 8000, // 1往復で8秒
         createHTML: () => createHourglassStageHTML(8),
         logic: (stage) => handleHourglassLogic(stage)
     }
@@ -153,12 +152,7 @@ let stageStates = {
     isHolding: false,
     currentWord: '',
     lightLevels: [],
-    // 砂時計用
-    hourglass: {
-        isUpsideDown: false,
-        progressTopToBottom: 0, // 0→1で上から下へ砂が落ち切る
-        lastUpdate: 0
-    }
+    hourglass: null
 };
 
 // バイブレーション設定
@@ -974,6 +968,11 @@ function updateNeedlePositions() {
                 levelBubble.style.transform = `translate(calc(-50% + ${offsetX}px), calc(-50% + ${offsetY}px))`;
             }
         }
+        
+        // 砂時計の描画更新
+        if (stageDef.type === 'hourglass') {
+            updateHourglassDrawing(currentStage);
+        }
     }
 }
 
@@ -1375,32 +1374,15 @@ function createLightStageHTML(stageNum) {
     `;
 }
 
-// ステージ8: 砂時計チャレンジのHTML生成（2D表現）
+// ステージ8: 砂時計のHTML生成
 function createHourglassStageHTML(stageNum) {
     return `
         <div class="puzzle-content">
             <h2>ステージ ${stageNum}</h2>
-            <p><strong>砂時計チャレンジ</strong></p>
-            <p>デバイスの傾きに合わせて砂が落ちます。端末をひっくり返すと砂の落ちる方向も反転します。</p>
-            
-            <div class="hourglass-display">
-                <div class="hourglass-center">
-                    <div class="hourglass-frame">
-                        <div class="hourglass-bulb top">
-                            <div class="sand top" id="sand-top-${stageNum}"></div>
-                            <div class="neck"></div>
-                        </div>
-                        <div class="stream" id="sand-stream-${stageNum}"></div>
-                        <div class="hourglass-bulb bottom">
-                            <div class="neck"></div>
-                            <div class="sand bottom" id="sand-bottom-${stageNum}"></div>
-                        </div>
-                    </div>
-                </div>
-                <div class="hourglass-status">
-                    <div>向き: <span id="hg-orientation-${stageNum}">正常</span></div>
-                    <div>進行: <span id="hg-progress-${stageNum}">0%</span></div>
-                </div>
+            <p>デバイスの角度で砂が流れます。上下をひっくり返すと砂の流れも反転します。</p>
+            <div class="hourglass-wrapper">
+                <canvas id="hourglass-canvas-${stageNum}" class="hourglass-canvas" width="260" height="360"></canvas>
+                <div id="hourglass-status-${stageNum}" class="hourglass-status">角度に応じて砂が流れます</div>
             </div>
         </div>
     `;
@@ -1478,15 +1460,7 @@ function setupStageSpecificListeners(stageNum) {
             setupLightListeners(stageNum);
             break;
         case 'hourglass':
-            // 砂の初期状態をセット
-            setTimeout(() => {
-                const top = document.getElementById(`sand-top-${stageNum}`);
-                const bottom = document.getElementById(`sand-bottom-${stageNum}`);
-                const stream = document.getElementById(`sand-stream-${stageNum}`);
-                if (top) top.style.height = '100%';
-                if (bottom) bottom.style.height = '0%';
-                if (stream) stream.style.opacity = '1';
-            }, 0);
+            setupHourglass(stageNum);
             break;
     }
 }
@@ -1543,6 +1517,135 @@ function setupLightListeners(stageNum) {
         });
         console.log(`✅ ステージ${stageNum}: カメラ停止ボタンのイベントリスナー設定`);
     }
+}
+
+// ==================== 砂時計（ステージ8）実装 ====================
+
+function setupHourglass(stageNum) {
+    initHourglass(stageNum);
+}
+
+function initHourglass(stageNum) {
+    const canvas = document.getElementById(`hourglass-canvas-${stageNum}`);
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    // 砂の総量は1.0とする
+    stageStates.hourglass = {
+        canvas,
+        ctx,
+        width: canvas.width,
+        height: canvas.height,
+        totalAmount: 1.0,
+        topAmount: 0.5,
+        bottomAmount: 0.5,
+        flowRate: 0.35 // 1.0/秒（角度が最大のとき）
+    };
+    drawHourglass(stageNum);
+}
+
+function updateHourglassDrawing(stageNum) {
+    const hg = stageStates.hourglass;
+    if (!hg || !hg.canvas) return;
+    drawHourglass(stageNum);
+}
+
+function drawHourglass(stageNum) {
+    const hg = stageStates.hourglass;
+    if (!hg) return;
+    const { ctx, width, height } = hg;
+    ctx.clearRect(0, 0, width, height);
+    
+    // 枠（砂時計の形: 二等辺三角形2つ）
+    ctx.strokeStyle = '#555555';
+    ctx.lineWidth = 2;
+    const margin = 20;
+    const neckWidth = 8; // 首の幅（見た目）
+    const bodyTopY = margin;
+    const bodyBottomY = height - margin;
+    const bodyCenterY = height / 2;
+    const leftX = margin;
+    const rightX = width - margin;
+    const centerX = width / 2;
+    
+    // 上三角形
+    ctx.beginPath();
+    ctx.moveTo(leftX, bodyTopY);
+    ctx.lineTo(centerX, bodyCenterY);
+    ctx.lineTo(rightX, bodyTopY);
+    ctx.closePath();
+    ctx.stroke();
+    
+    // 下三角形
+    ctx.beginPath();
+    ctx.moveTo(leftX, bodyBottomY);
+    ctx.lineTo(centerX, bodyCenterY);
+    ctx.lineTo(rightX, bodyBottomY);
+    ctx.closePath();
+    ctx.stroke();
+    
+    // 砂の描画（トップ・ボトム）
+    // 砂量に比例した高さ（各三角形の面積は同じなので、近似で高さをsqrtで求める）
+    const topRatio = Math.max(0, Math.min(1, hg.topAmount / hg.totalAmount));
+    const bottomRatio = Math.max(0, Math.min(1, hg.bottomAmount / hg.totalAmount));
+    
+    // 三角形の面積は高さに比例して二乗で増えるため、充填高さはsqrt(ratio)
+    const fillTopH = (bodyCenterY - bodyTopY) * Math.sqrt(topRatio);
+    const fillBottomH = (bodyBottomY - bodyCenterY) * Math.sqrt(bottomRatio);
+    
+    ctx.fillStyle = '#ffffff';
+    ctx.globalAlpha = 0.9;
+    
+    // 上側砂（頂点から下へ広がる逆三角形を塗る）
+    if (fillTopH > 0.5) {
+        const t = fillTopH / (bodyCenterY - bodyTopY);
+        const halfWidth = (rightX - leftX) * (1 - t) / 2;
+        ctx.beginPath();
+        ctx.moveTo(centerX - halfWidth, bodyTopY + fillTopH);
+        ctx.lineTo(centerX, bodyTopY);
+        ctx.lineTo(centerX + halfWidth, bodyTopY + fillTopH);
+        ctx.closePath();
+        ctx.fill();
+    }
+    
+    // 下側砂（底から上へ広がる三角形）
+    if (fillBottomH > 0.5) {
+        const t2 = fillBottomH / (bodyBottomY - bodyCenterY);
+        const halfWidth2 = (rightX - leftX) * t2 / 2;
+        ctx.beginPath();
+        ctx.moveTo(centerX - halfWidth2, bodyBottomY - fillBottomH);
+        ctx.lineTo(centerX + halfWidth2, bodyBottomY - fillBottomH);
+        ctx.lineTo(centerX, bodyBottomY);
+        ctx.closePath();
+        ctx.fill();
+    }
+    
+    // 砂の流れ（首部分）
+    const angleRad = (smoothTiltX || 0) * Math.PI / 180;
+    const gravity = Math.cos(angleRad);
+    const flowMagnitude = Math.max(0, Math.abs(gravity) - 0.05);
+    if (flowMagnitude > 0 && ((gravity > 0 && hg.topAmount > 0) || (gravity < 0 && hg.bottomAmount > 0))) {
+        ctx.strokeStyle = '#ffffff';
+        ctx.globalAlpha = 0.9;
+        ctx.lineWidth = 1.5;
+        
+        // 中央の滴
+        ctx.beginPath();
+        ctx.moveTo(centerX, bodyCenterY - 10);
+        ctx.lineTo(centerX, bodyCenterY + 10);
+        ctx.stroke();
+        
+        // 粒子風の点
+        ctx.globalAlpha = 0.8;
+        for (let i = 0; i < 6; i++) {
+            const offset = (Math.random() - 0.5) * neckWidth;
+            const y1 = bodyCenterY - 10 + Math.random() * 20;
+            ctx.beginPath();
+            ctx.moveTo(centerX + offset, y1);
+            ctx.lineTo(centerX + offset, y1 + 3 + Math.random() * 4);
+            ctx.stroke();
+        }
+    }
+    ctx.globalAlpha = 1.0;
 }
 
 // ==================== 新ロジック処理関数群 ====================
@@ -1789,59 +1892,49 @@ function handleLightLogic(stageDef) {
 
 // 砂時計ロジック処理
 function handleHourglassLogic(stageDef) {
-    const stageNum = 8;
-    const orientationEl = document.getElementById(`hg-orientation-${stageNum}`);
-    const progressEl = document.getElementById(`hg-progress-${stageNum}`);
-    const topSand = document.getElementById(`sand-top-${stageNum}`);
-    const bottomSand = document.getElementById(`sand-bottom-${stageNum}`);
-    const stream = document.getElementById(`sand-stream-${stageNum}`);
-    if (!topSand || !bottomSand) return;
-
-    // 傾きから上下判定（X軸の傾きで上下、beta=前後, gamma=左右）
-    // 端末の上下を簡易に判定: smoothTiltXが正負大きい場合を上下とみなす
-    const upsideDown = Math.abs(smoothTiltX) > 100 || smoothTiltX < -80; // 実機で調整可
-    if (orientationEl) {
-        orientationEl.textContent = upsideDown ? '逆さま' : '正常';
-        orientationEl.style.color = upsideDown ? '#ff9800' : '#4CAF50';
+    const hg = stageStates.hourglass;
+    if (!hg) return;
+    
+    // デバイスの上下方向ベクトルを近似（tiltX: 前後, tiltY: 左右）
+    // 砂の流れ方向は重力方向（画面内での上下）とみなし、tiltXを使用
+    const angleDeg = smoothTiltX; // -90(上向き) ～ +90(下向き) を想定
+    const angleRad = angleDeg * Math.PI / 180;
+    
+    // 有効な流量: 下方向成分のみ（cosが正のとき下へ流れる）
+    // 端末を反転したら上側に向かって流れる（上下の定義は容器内で反転）
+    const gravity = Math.cos(angleRad); // -1 ～ 1
+    
+    // しきい値未満なら停止（ほぼ水平）
+    const flowMagnitude = Math.max(0, Math.abs(gravity) - 0.05);
+    
+    // どちら側が下かを決める（gravity>0: 画面の下方向が「下」= 下室へ、 gravity<0: 上室へ）
+    const flowDirection = gravity >= 0 ? 1 : -1;
+    
+    // 容器の首が下向きにある側から、反対側へ砂が移動する。
+    // direction=1 のとき top→bottom、direction=-1 のとき bottom→top
+    const dt = 0.1; // 1回のロジック刻み秒相当（100ms）
+    const rate = hg.flowRate * flowMagnitude * dt;
+    
+    if (flowDirection === 1) {
+        const moved = Math.min(rate, hg.topAmount);
+        hg.topAmount -= moved;
+        hg.bottomAmount += moved;
+    } else {
+        const moved = Math.min(rate, hg.bottomAmount);
+        hg.bottomAmount -= moved;
+        hg.topAmount += moved;
     }
-
-    const now = performance.now();
-    if (stageStates.hourglass.lastUpdate === 0) {
-        stageStates.hourglass.lastUpdate = now;
+    
+    // クリア条件: gravity>=0（通常の上下）で、下室が満杯に近いとき
+    const statusEl = document.getElementById(`hourglass-status-${currentStage}`);
+    if (statusEl) {
+        const percentBottom = Math.round((hg.bottomAmount / hg.totalAmount) * 100);
+        statusEl.textContent = `下側の砂: ${percentBottom}%`;
     }
-    const dt = now - stageStates.hourglass.lastUpdate;
-    stageStates.hourglass.lastUpdate = now;
-
-    // 砂の進行速度（傾きが大きいほど速く落ちる演出）
-    const tiltMagnitude = Math.min(1, Math.abs(smoothTiltX) / 90);
-    const baseSpeed = 1 / stageDef.sandDuration; // msあたりの進行
-    const speed = baseSpeed * (0.6 + 0.8 * tiltMagnitude); // 0.6〜1.4倍速
-
-    // 進行更新（上下で方向反転）
-    let progress = stageStates.hourglass.progressTopToBottom;
-    progress += (upsideDown ? -1 : 1) * speed * dt;
-    progress = Math.max(0, Math.min(1, progress));
-    stageStates.hourglass.progressTopToBottom = progress;
-
-    // 視覚更新（topは残量、bottomは蓄積量）
-    const topHeight = (1 - progress) * 100;
-    const bottomHeight = progress * 100;
-    topSand.style.height = `${topHeight}%`;
-    bottomSand.style.height = `${bottomHeight}%`;
-    if (stream) {
-        stream.style.opacity = topHeight > 0 && bottomHeight < 100 ? '1' : '0';
-    }
-
-    if (progressEl) {
-        progressEl.textContent = `${Math.round(progress * 100)}%`;
-    }
-
-    // クリア判定（どちらかの端に到達したらクリアとする）
-    if (!stageStates.currentCompleteFlag && (progress === 1)) {
+    
+    if (gravity >= 0 && hg.bottomAmount >= hg.totalAmount - 0.1 && !stageStates.currentCompleteFlag) {
         stageStates.currentCompleteFlag = true;
-        setTimeout(() => {
-            stageComplete(`${stageDef.title}クリア！\n砂が下部にすべて落ちました！`);
-        }, 400);
+        stageComplete(`${stageDef.title}クリア！\n砂が全て下側に溜まりました！`);
     }
 }
 
@@ -2632,19 +2725,9 @@ function resetStageState() {
                 console.log('🔄 光センサーステージをリセット');
                 break;
             case 'hourglass':
-                // 砂時計ステージのリセット
-                stageStates.hourglass.isUpsideDown = false;
-                stageStates.hourglass.progressTopToBottom = 0;
-                stageStates.hourglass.lastUpdate = 0;
-                setTimeout(() => {
-                    const top = document.getElementById(`sand-top-${currentStage}`);
-                    const bottom = document.getElementById(`sand-bottom-${currentStage}`);
-                    const stream = document.getElementById(`sand-stream-${currentStage}`);
-                    if (top) top.style.height = '100%';
-                    if (bottom) bottom.style.height = '0%';
-                    if (stream) stream.style.opacity = '1';
-                }, 50);
-                console.log('🔄 砂時計ステージをリセット');
+                // 砂時計の初期化
+                initHourglass(currentStage);
+                console.log('🔄 砂時計ステージを初期化');
                 break;
         }
     }
@@ -2889,6 +2972,17 @@ function updateDebugPanel() {
                     • 傾き量: ${Math.round(tiltMagnitude)}° 許容: ${stageDef.tolerance}°<br>
                     • 水平: ${tiltMagnitude <= stageDef.tolerance ? '✅' : '❌'}
                 `;
+                break;
+            case 'hourglass':
+                const hg = stageStates.hourglass;
+                if (hg) {
+                    const percentBottom = Math.round((hg.bottomAmount / hg.totalAmount) * 100);
+                    stageSpecificInfo = `
+                        <br>砂時計情報:<br>
+                        • 傾きX: ${Math.round(smoothTiltX)}°<br>
+                        • 下側砂量: ${percentBottom}%
+                    `;
+                }
                 break;
         }
     }
