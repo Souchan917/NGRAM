@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>謎解きセンサーゲーム</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div id="game-container">
+        <header>
+            <h1>謎解きセンサーゲーム</h1>
+            <div id="stage-info">
+                <span id="current-stage">ステージ 0</span>
+            </div>
+            
+            <!-- ステージ選択ボタン -->
+            <div id="stage-selector">
+                <div class="stage-buttons">
+                    <button class="stage-btn" onclick="goToStage(0)" id="stage-btn-0">T</button>
+                    <button class="stage-btn" onclick="goToStage(1)" id="stage-btn-1">1</button>
+                    <button class="stage-btn" onclick="goToStage(2)" id="stage-btn-2">2</button>
+                    <button class="stage-btn" onclick="goToStage(3)" id="stage-btn-3">3</button>
+                    <button class="stage-btn" onclick="goToStage(4)" id="stage-btn-4">4</button>
+                    <button class="stage-btn" onclick="goToStage(5)" id="stage-btn-5">5</button>
+                    <button class="stage-btn" onclick="goToStage(6)" id="stage-btn-6">6</button>
+                    <button class="stage-btn" onclick="goToStage(7)" id="stage-btn-7">7</button>
+                </div>
+            </div>
+        </header>
+
+        <main id="game-screen">
+            <!-- チュートリアル -->
+            <div id="stage-0" class="stage active">
+                <div class="puzzle-content">
+                    <h2>チュートリアル</h2>
+                    <p>このゲームはスマートフォンのセンサーを使った謎解きです。</p>
+                    <p>デバイスを動かしたり、向きを変えたりして謎を解いてください。</p>
+                    <div class="sensor-display">
+                        <div class="sensor-item">
+                            <span>コンパス:</span>
+                            <span id="compass-value">0°</span>
+                        </div>
+                        <div class="sensor-item">
+                            <span>傾きX:</span>
+                            <span id="tilt-x">0°</span>
+                        </div>
+                        <div class="sensor-item">
+                            <span>傾きY:</span>
+                            <span id="tilt-y">0°</span>
+                        </div>
+                    </div>
+                    <p>センサーの値が変化するのを確認したら、次のステージに進みましょう。</p>
+                    <button id="tutorial-next" class="next-button">次のステージへ</button>
+                </div>
+            </div>
+            
+            <!-- 動的ステージコンテナ -->
+            <div id="dynamic-stages-container"></div>
+        </main>
+
+        <!-- 成功メッセージ -->
+        <div id="success-modal" class="modal">
+            <div class="modal-content">
+                <h3>ステージクリア！</h3>
+                <p id="success-message">おめでとうございます！</p>
+                <button id="next-stage-btn" class="next-button">次のステージへ</button>
+            </div>
+        </div>
+
+        <!-- センサー許可要求モーダル -->
+        <div id="permission-modal" class="modal active">
+            <div class="modal-content">
+                <h3>📱 センサーアクセス許可</h3>
+                <p>このゲームはスマートフォンのセンサー（ジャイロスコープ・加速度センサー・コンパス）を使用します。</p>
+                <div class="permission-details">
+                    <div class="permission-item">🧭 <strong>コンパス</strong> - 方向の検出</div>
+                    <div class="permission-item">📐 <strong>傾きセンサー</strong> - デバイスの傾きを検出</div>
+                    <div class="permission-item">🤳 <strong>動きセンサー</strong> - シェイク動作を検出</div>
+                </div>
+                <p><strong>注意：</strong> HTTPS接続とモバイルデバイスでの使用を推奨します。</p>
+                <button id="request-permission" class="next-button">🚀 センサーを有効にする</button>
+                <div class="permission-help">
+                    <details>
+                        <summary>うまく動作しない場合</summary>
+                        <ul>
+                            <li>デバイスを少し動かしてみてください</li>
+                            <li>ブラウザを再読み込みしてください</li>
+                            <li>HTTPS接続を確認してください</li>
+                            <li>プライベートブラウジングを無効にしてください</li>
+                        </ul>
+                    </details>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html> 
