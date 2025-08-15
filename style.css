@@ -1080,6 +1080,245 @@ header h1 {
     font-family: 'SF Mono', 'Monaco', 'Menlo', monospace;
 }
 
+/* iPhone向けの通知スタイル */
+.iphone-notice {
+    background: rgba(255, 152, 0, 0.1);
+    border: 1px solid #ff9800;
+    border-radius: 0;
+    padding: 1rem;
+    margin: 1rem 0;
+    text-align: center;
+}
+
+.iphone-notice small {
+    color: #ff9800;
+    font-size: 0.8rem;
+    line-height: 1.4;
+}
+
+.morse-legend-item small {
+    color: #666666;
+    font-size: 0.7rem;
+    display: block;
+    margin-top: 0.25rem;
+}
+
+/* ==================== 砂時計ステージ スタイル ==================== */
+
+.hourglass-display {
+    text-align: center;
+    padding: 2rem 0;
+}
+
+.hourglass-container {
+    margin: 0 auto 2rem;
+    transition: transform 0.8s ease-in-out;
+}
+
+.hourglass {
+    width: 200px;
+    height: 300px;
+    margin: 0 auto;
+    position: relative;
+    background: transparent;
+    border: 3px solid #333333;
+    border-radius: 15px 15px 15px 15px;
+    display: flex;
+    flex-direction: column;
+}
+
+.hourglass-section {
+    flex: 1;
+    position: relative;
+    overflow: hidden;
+}
+
+.hourglass-section.top {
+    border-bottom: none;
+    border-radius: 15px 15px 0 0;
+}
+
+.hourglass-section.bottom {
+    border-top: none;
+    border-radius: 0 0 15px 15px;
+}
+
+.sand-container {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 100%;
+    overflow: hidden;
+}
+
+.sand {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background: linear-gradient(45deg, #ffd700 0%, #ffed4e 50%, #f9c23c 100%);
+    transition: height 0.1s linear;
+    border-radius: 0 0 12px 12px;
+}
+
+.hourglass-section.top .sand {
+    border-radius: 12px 12px 0 0;
+    top: 0;
+    bottom: auto;
+}
+
+.hourglass-neck {
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 20px;
+    height: 20px;
+    background: #333333;
+    z-index: 10;
+}
+
+.hourglass-section.top .hourglass-neck {
+    bottom: -10px;
+    border-radius: 0 0 10px 10px;
+}
+
+.hourglass-section.bottom .hourglass-neck {
+    top: -10px;
+    border-radius: 10px 10px 0 0;
+}
+
+.sand-stream {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translateX(-50%);
+    width: 3px;
+    height: 0;
+    background: linear-gradient(to bottom, #ffd700, #f9c23c);
+    z-index: 5;
+    opacity: 0;
+    transition: all 0.3s ease;
+}
+
+.sand-stream.active {
+    height: 40px;
+    opacity: 1;
+    animation: sandFlow 0.3s ease-in-out infinite alternate;
+}
+
+@keyframes sandFlow {
+    0% { transform: translateX(-50%) scaleX(1); }
+    100% { transform: translateX(-50%) scaleX(1.5); }
+}
+
+.hourglass-info {
+    margin: 2rem 0;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.flip-counter, .orientation-indicator {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.75rem;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid #333333;
+    border-radius: 0;
+}
+
+.counter-label, .orientation-label, .progress-label {
+    font-size: 0.9rem;
+    color: #999999;
+    font-weight: 300;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.counter-value, .orientation-value {
+    font-size: 1.1rem;
+    color: #ffffff;
+    font-weight: 400;
+    font-family: 'SF Mono', 'Monaco', 'Menlo', monospace;
+}
+
+.sand-progress {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    padding: 0.75rem;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid #333333;
+    border-radius: 0;
+}
+
+.sand-progress .progress-bar {
+    margin: 0;
+}
+
+.progress-value {
+    font-size: 0.9rem;
+    color: #ffffff;
+    font-family: 'SF Mono', 'Monaco', 'Menlo', monospace;
+    text-align: center;
+}
+
+.hourglass-instructions {
+    margin-top: 2rem;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid #333333;
+    border-radius: 0;
+    padding: 1.5rem;
+}
+
+.instruction-item {
+    margin: 0.75rem 0;
+    font-size: 0.85rem;
+    color: #cccccc;
+    line-height: 1.4;
+    text-align: left;
+}
+
+/* モバイル対応 */
+@media (max-width: 768px) {
+    .hourglass {
+        width: 150px;
+        height: 225px;
+    }
+    
+    .hourglass-neck {
+        width: 15px;
+        height: 15px;
+    }
+    
+    .hourglass-section.top .hourglass-neck {
+        bottom: -7px;
+    }
+    
+    .hourglass-section.bottom .hourglass-neck {
+        top: -7px;
+    }
+    
+    .sand-stream {
+        width: 2px;
+    }
+    
+    .sand-stream.active {
+        height: 30px;
+    }
+    
+    .hourglass-info {
+        margin: 1.5rem 0;
+    }
+    
+    .instruction-item {
+        font-size: 0.8rem;
+        margin: 0.5rem 0;
+    }
+}
+
 /* 横向き時の調整 */
 @media (orientation: landscape) and (max-height: 500px) {
     .puzzle-content {

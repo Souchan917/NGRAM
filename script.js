@@ -13,7 +13,7 @@ let permissionGranted = false;
 let debugMode = localStorage.getItem('nazoGameDebugMode') === 'true';
 let debugKeySequence = '';
 const DEBUG_KEY_CODE = 'debug';
-const TOTAL_STAGES = 8; // ステージ0（チュートリアル）+ ステージ1〜7
+const TOTAL_STAGES = 9; // ステージ0（チュートリアル）+ ステージ1〜8
 
 // 滑らかなアニメーション用
 let smoothCompassHeading = 0;
@@ -132,6 +132,17 @@ const STAGE_DEFINITIONS = {
         type: 'light',
         createHTML: () => createLightStageHTML(7),
         logic: (stage) => handleLightLogic(stage)
+    },
+    8: {
+        title: 'ステージ 8',
+        description: '砂時計チャレンジ',
+        subtitle: 'スマートフォンを回転させて砂時計をコントロール',
+        details: 'デバイスをひっくり返して砂を3回完全に落としてください',
+        type: 'hourglass',
+        requiredFlips: 3,
+        sandDuration: 10000, // 10秒で砂が落ちきる
+        createHTML: () => createHourglassStageHTML(8),
+        logic: (stage) => handleHourglassLogic(stage)
     }
 };
 
@@ -142,7 +153,13 @@ let stageStates = {
     holdStartTime: 0,
     isHolding: false,
     currentWord: '',
-    lightLevels: []
+    lightLevels: [],
+    // 砂時計ステージ用
+    hourglassFlips: 0,
+    isUpsideDown: false,
+    sandProgress: 0,
+    lastFlipTime: 0,
+    hourglassRunning: false
 };
 
 // バイブレーション設定
@@ -322,21 +339,36 @@ function initGame() {
         const vibrationSupported = checkVibrationSupport();
         console.log('📳 バイブレーション機能サポート:', vibrationSupported);
         
-        // バイブレーション非対応時のUIメッセージ
+        // バイブレーション非対応時のUIメッセージ（iPhone対応）
         setTimeout(() => {
             if (!vibrationSupported) {
-                const morseStatus = document.getElementById('morse-status');
+                const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+                
+                // ステージ6のUI要素を更新
+                const morseStatus = document.getElementById('morse-status-6');
                 if (morseStatus) {
-                    morseStatus.innerHTML = `
-                        ⚠️ バイブレーション機能が利用できません<br>
-                        視覚的フィードバックでモールス信号を確認してください
-                    `;
-                    morseStatus.style.color = '#ff6b6b';
+                    if (isIOS) {
+                        morseStatus.innerHTML = `
+                            🍎 <strong>iPhone向けモード</strong><br>
+                            <small>音と画面フラッシュでモールス信号を表現します</small>
+                        `;
+                        morseStatus.style.color = '#ff9800';
+                    } else {
+                        morseStatus.innerHTML = `
+                            👁️ <strong>視覚モード</strong><br>
+                            <small>視覚的フィードバックでモールス信号を確認してください</small>
+                        `;
+                        morseStatus.style.color = '#2196F3';
+                    }
                 }
                 
-                const playButton = document.getElementById('play-morse-btn');
+                const playButton = document.getElementById('play-morse-btn-6');
                 if (playButton) {
-                    playButton.textContent = '👁️ 視覚的モールス信号を再生';
+                    if (isIOS) {
+                        playButton.textContent = '🍎 iPhone向けモールス信号を再生';
+                    } else {
+                        playButton.textContent = '👁️ 視覚的モールス信号を再生';
+                    }
                 }
             }
         }, 1000);
@@ -1187,12 +1219,15 @@ function createMorseStageHTML(stageNum) {
                     <div class="morse-legend">
                         <div class="morse-legend-item">
                             <span class="morse-dot">●</span>
-                            <span>短い振動 = ドット (.)</span>
+                            <span>短い信号 = ドット (.) <small>※iPhone: 短い音+点滅</small></span>
                         </div>
                         <div class="morse-legend-item">
                             <span class="morse-dash">━</span>
-                            <span>長い振動 = ダッシュ (-)</span>
+                            <span>長い信号 = ダッシュ (-) <small>※iPhone: 長い音+点滅</small></span>
                         </div>
+                    </div>
+                    <div class="iphone-notice">
+                        <small>🍎 <strong>iPhone ユーザーへ：</strong> バイブレーション機能は対応していませんが、音と画面の点滅でモールス信号を表現します。</small>
                     </div>
                 </div>
                 
@@ -1271,6 +1306,75 @@ function createMorseStageHTML(stageNum) {
                             </div>
                         </div>
                     </details>
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+// ステージ8: 砂時計チャレンジのHTML生成
+function createHourglassStageHTML(stageNum) {
+    return `
+        <div class="puzzle-content">
+            <h2>ステージ ${stageNum}</h2>
+            <p><strong>砂時計チャレンジ</strong></p>
+            <p>スマートフォンを回転させて砂時計をコントロールしてください。</p>
+            <p>デバイスをひっくり返して砂を<strong>3回完全に落とす</strong>とクリアです！</p>
+            
+            <div class="hourglass-display">
+                <div class="hourglass-container" id="hourglass-container-${stageNum}">
+                    <div class="hourglass" id="hourglass-${stageNum}">
+                        <!-- 上部の砂溜まり -->
+                        <div class="hourglass-section top" id="hourglass-top-${stageNum}">
+                            <div class="sand-container">
+                                <div class="sand" id="sand-top-${stageNum}"></div>
+                            </div>
+                            <div class="hourglass-neck"></div>
+                        </div>
+                        
+                        <!-- 砂の流れ -->
+                        <div class="sand-stream" id="sand-stream-${stageNum}"></div>
+                        
+                        <!-- 下部の砂溜まり -->
+                        <div class="hourglass-section bottom" id="hourglass-bottom-${stageNum}">
+                            <div class="hourglass-neck"></div>
+                            <div class="sand-container">
+                                <div class="sand" id="sand-bottom-${stageNum}"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="hourglass-info">
+                    <div class="flip-counter">
+                        <span class="counter-label">完了回数:</span>
+                        <span class="counter-value" id="flip-counter-${stageNum}">0 / 3</span>
+                    </div>
+                    
+                    <div class="orientation-indicator">
+                        <span class="orientation-label">向き:</span>
+                        <span class="orientation-value" id="orientation-${stageNum}">正常</span>
+                    </div>
+                    
+                    <div class="sand-progress">
+                        <span class="progress-label">砂の進行:</span>
+                        <div class="progress-bar">
+                            <div class="progress-fill" id="sand-progress-${stageNum}"></div>
+                        </div>
+                        <span class="progress-value" id="progress-value-${stageNum}">0%</span>
+                    </div>
+                </div>
+                
+                <div class="hourglass-instructions">
+                    <div class="instruction-item">
+                        📱 <strong>操作方法:</strong> スマートフォンを上下にひっくり返してください
+                    </div>
+                    <div class="instruction-item">
+                        ⏳ <strong>目標:</strong> 砂が完全に落ちるまで約10秒待ち、3回繰り返す
+                    </div>
+                    <div class="instruction-item">
+                        🔄 <strong>ヒント:</strong> 砂が落ちきったタイミングでデバイスを回転させましょう
+                    </div>
                 </div>
             </div>
         </div>
@@ -1372,8 +1476,8 @@ function initializeAllStages() {
     // 既存のステージをクリア
     container.innerHTML = '';
     
-    // ステージ1〜7を生成
-    for (let i = 1; i <= 7; i++) {
+            // ステージ1〜8を生成
+        for (let i = 1; i <= 8; i++) {
         const stageElement = createStage(i);
         if (stageElement) {
             container.appendChild(stageElement);
@@ -1393,7 +1497,7 @@ function setupStageEventListeners() {
     console.log('🔗 ステージイベントリスナーを設定中...');
     
     // 各ステージのイベントリスナーを設定
-    for (let i = 1; i <= 7; i++) {
+    for (let i = 1; i <= 8; i++) {
         setupStageSpecificListeners(i);
     }
     
@@ -1711,6 +1815,222 @@ function handleLightLogic(stageDef) {
     // ここでは特別な処理は不要
 }
 
+// 砂時計ロジック処理
+function handleHourglassLogic(stageDef) {
+    const stageNum = currentStage;
+    
+    // デバイスの向きを判定（Y軸の傾きで上下逆さまを検出）
+    const currentTiltX = Math.round(smoothTiltX);
+    const currentTiltY = Math.round(smoothTiltY);
+    
+    // デバイスが上下逆さまかどうかを判定（X軸の傾きで判断）
+    // -90度 〜 -150度 または 90度 〜 150度で逆さま
+    const isCurrentlyUpsideDown = Math.abs(currentTiltX) > 90 && Math.abs(currentTiltX) < 150;
+    
+    // 向きが変わった場合（フリップ検出）
+    if (isCurrentlyUpsideDown !== stageStates.isUpsideDown) {
+        const now = Date.now();
+        
+        // 前回のフリップから十分時間が経過している場合のみ有効
+        if (now - stageStates.lastFlipTime > 1000) { // 1秒のクールダウン
+            console.log(`📱 デバイスフリップ検出: ${stageStates.isUpsideDown ? '正常' : '逆さま'} → ${isCurrentlyUpsideDown ? '逆さま' : '正常'}`);
+            
+            stageStates.isUpsideDown = isCurrentlyUpsideDown;
+            stageStates.lastFlipTime = now;
+            
+            // 砂時計をリセット（砂の流れ方向が変わる）
+            resetHourglassSand(stageNum);
+            
+            // 砂時計の実行を開始
+            stageStates.hourglassRunning = true;
+            stageStates.sandProgress = 0;
+        }
+    }
+    
+    // 砂時計が動作中の場合、砂の進行を更新
+    if (stageStates.hourglassRunning) {
+        updateSandProgress(stageNum, stageDef);
+    }
+    
+    // UI更新
+    updateHourglassUI(stageNum, currentTiltX, isCurrentlyUpsideDown);
+}
+
+// 砂時計の砂をリセット
+function resetHourglassSand(stageNum) {
+    const topSand = document.getElementById(`sand-top-${stageNum}`);
+    const bottomSand = document.getElementById(`sand-bottom-${stageNum}`);
+    const sandStream = document.getElementById(`sand-stream-${stageNum}`);
+    
+    if (stageStates.isUpsideDown) {
+        // 逆さまの場合: 上（見た目的には下）に砂を移動
+        if (topSand) topSand.style.height = '100%';
+        if (bottomSand) bottomSand.style.height = '0%';
+    } else {
+        // 正常の場合: 上に砂を移動
+        if (topSand) topSand.style.height = '100%';
+        if (bottomSand) bottomSand.style.height = '0%';
+    }
+    
+    // 砂の流れを開始
+    if (sandStream) {
+        sandStream.classList.add('active');
+    }
+    
+    console.log(`⏳ 砂時計リセット: ${stageStates.isUpsideDown ? '逆さま' : '正常'}向き`);
+}
+
+// 砂の進行状況を更新
+function updateSandProgress(stageNum, stageDef) {
+    const now = Date.now();
+    const elapsed = now - stageStates.lastFlipTime;
+    const progress = Math.min(elapsed / stageDef.sandDuration, 1);
+    
+    stageStates.sandProgress = progress;
+    
+    // 砂の視覚的更新
+    updateSandVisuals(stageNum, progress);
+    
+    // 砂が完全に落ちた場合
+    if (progress >= 1 && stageStates.hourglassRunning) {
+        stageStates.hourglassRunning = false;
+        stageStates.hourglassFlips++;
+        
+        // 砂の流れを停止
+        const sandStream = document.getElementById(`sand-stream-${stageNum}`);
+        if (sandStream) {
+            sandStream.classList.remove('active');
+        }
+        
+        console.log(`✅ 砂落下完了! 完了回数: ${stageStates.hourglassFlips}/${stageDef.requiredFlips}`);
+        
+        // クリア条件チェック
+        if (stageStates.hourglassFlips >= stageDef.requiredFlips) {
+            stageStates.currentCompleteFlag = true;
+            setTimeout(() => {
+                stageComplete(`ステージ${stageNum}クリア！\n砂時計チャレンジを${stageDef.requiredFlips}回完了しました！`);
+            }, 1000);
+        }
+    }
+}
+
+// 砂の視覚的表現を更新
+function updateSandVisuals(stageNum, progress) {
+    const topSand = document.getElementById(`sand-top-${stageNum}`);
+    const bottomSand = document.getElementById(`sand-bottom-${stageNum}`);
+    
+    if (stageStates.isUpsideDown) {
+        // 逆さまの場合
+        if (topSand) topSand.style.height = `${(1 - progress) * 100}%`;
+        if (bottomSand) bottomSand.style.height = `${progress * 100}%`;
+    } else {
+        // 正常の場合
+        if (topSand) topSand.style.height = `${(1 - progress) * 100}%`;
+        if (bottomSand) bottomSand.style.height = `${progress * 100}%`;
+    }
+}
+
+// 砂時計UIの更新
+function updateHourglassUI(stageNum, tiltX, isUpsideDown) {
+    // 向き表示の更新
+    const orientationEl = document.getElementById(`orientation-${stageNum}`);
+    if (orientationEl) {
+        orientationEl.textContent = isUpsideDown ? '逆さま' : '正常';
+        orientationEl.style.color = isUpsideDown ? '#ff9800' : '#4CAF50';
+    }
+    
+    // 完了回数の更新
+    const flipCounterEl = document.getElementById(`flip-counter-${stageNum}`);
+    if (flipCounterEl) {
+        const stageDef = STAGE_DEFINITIONS[stageNum];
+        if (stageDef) {
+            flipCounterEl.textContent = `${stageStates.hourglassFlips} / ${stageDef.requiredFlips}`;
+        }
+    }
+    
+    // 砂の進行状況の更新
+    const progressEl = document.getElementById(`sand-progress-${stageNum}`);
+    const progressValueEl = document.getElementById(`progress-value-${stageNum}`);
+    
+    if (progressEl) {
+        progressEl.style.width = `${stageStates.sandProgress * 100}%`;
+    }
+    
+    if (progressValueEl) {
+        progressValueEl.textContent = `${Math.round(stageStates.sandProgress * 100)}%`;
+    }
+    
+    // 砂時計全体の回転（視覚的フィードバック）
+    const hourglassContainer = document.getElementById(`hourglass-container-${stageNum}`);
+    if (hourglassContainer) {
+        const rotation = isUpsideDown ? 180 : 0;
+        hourglassContainer.style.transform = `rotate(${rotation}deg)`;
+    }
+}
+
+// 砂時計UIの初期化
+function initializeHourglassUI(stageNum) {
+    console.log(`⏳ 砂時計UI初期化: ステージ${stageNum}`);
+    
+    // 砂時計の初期状態設定
+    const topSand = document.getElementById(`sand-top-${stageNum}`);
+    const bottomSand = document.getElementById(`sand-bottom-${stageNum}`);
+    const sandStream = document.getElementById(`sand-stream-${stageNum}`);
+    const hourglassContainer = document.getElementById(`hourglass-container-${stageNum}`);
+    
+    // 初期状態: 上部に砂が100%
+    if (topSand) {
+        topSand.style.height = '100%';
+        topSand.style.transition = 'height 0.5s ease-out';
+    }
+    
+    if (bottomSand) {
+        bottomSand.style.height = '0%';
+        bottomSand.style.transition = 'height 0.5s ease-out';
+    }
+    
+    // 砂の流れを停止
+    if (sandStream) {
+        sandStream.classList.remove('active');
+    }
+    
+    // 砂時計を正常向きに
+    if (hourglassContainer) {
+        hourglassContainer.style.transform = 'rotate(0deg)';
+        hourglassContainer.style.transition = 'transform 0.8s ease-in-out';
+    }
+    
+    // カウンター表示の初期化
+    const flipCounterEl = document.getElementById(`flip-counter-${stageNum}`);
+    if (flipCounterEl) {
+        const stageDef = STAGE_DEFINITIONS[stageNum];
+        if (stageDef) {
+            flipCounterEl.textContent = `0 / ${stageDef.requiredFlips}`;
+        }
+    }
+    
+    // 向き表示の初期化
+    const orientationEl = document.getElementById(`orientation-${stageNum}`);
+    if (orientationEl) {
+        orientationEl.textContent = '正常';
+        orientationEl.style.color = '#4CAF50';
+    }
+    
+    // 進行度表示の初期化
+    const progressEl = document.getElementById(`sand-progress-${stageNum}`);
+    const progressValueEl = document.getElementById(`progress-value-${stageNum}`);
+    
+    if (progressEl) {
+        progressEl.style.width = '0%';
+    }
+    
+    if (progressValueEl) {
+        progressValueEl.textContent = '0%';
+    }
+    
+    console.log('✅ 砂時計UI初期化完了');
+}
+
 // バイブレーション機能チェック
 function checkVibrationSupport() {
     console.log('=== バイブレーション機能チェック ===');
@@ -1718,6 +2038,20 @@ function checkVibrationSupport() {
     console.log('User Agent:', navigator.userAgent);
     console.log('Platform:', navigator.platform);
     console.log('Protocol:', location.protocol);
+    
+    // iOSデバイスのチェック
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+    const isSafari = /Safari/.test(navigator.userAgent) && !/Chrome/.test(navigator.userAgent);
+    
+    console.log('iOS:', isIOS);
+    console.log('Safari:', isSafari);
+    
+    // iOSは基本的にバイブレーション非対応
+    if (isIOS) {
+        console.warn('⚠️ iOS デバイスではバイブレーション機能がサポートされていません');
+        console.log('📱 代替手段として視覚的・音響的フィードバックを使用します');
+        return false;
+    }
     
     // 複数の方法でバイブレーション機能をチェック
     const hasVibrate = 'vibrate' in navigator;
@@ -1733,12 +2067,24 @@ function checkVibrationSupport() {
         return false;
     }
     
-    // テストバイブレーション
+    // HTTPS要件チェック
+    if (location.protocol !== 'https:' && location.hostname !== 'localhost') {
+        console.warn('⚠️ バイブレーション機能にはHTTPS接続が必要です');
+        return false;
+    }
+    
+    // テストバイブレーション（iOS以外）
     try {
-        const testResult = navigator.vibrate(100);
+        const testResult = navigator.vibrate(50); // 短いテスト
         console.log('テストバイブレーション結果:', testResult);
-        console.log('✅ バイブレーション機能が利用可能です');
-        return true;
+        
+        if (testResult) {
+            console.log('✅ バイブレーション機能が利用可能です');
+            return true;
+        } else {
+            console.warn('⚠️ バイブレーション機能は無効になっています');
+            return false;
+        }
     } catch (error) {
         console.error('❌ バイブレーションテストエラー:', error);
         return false;
@@ -1781,9 +2127,11 @@ function updateVisualFeedback(type, letter = '', stageNum = 6) {
 async function playMorseVibration(word, stageNum = 6) {
     console.log('🎵 モールス信号再生開始:', word);
     
-    if (!checkVibrationSupport()) {
-        console.warn('⚠️ バイブレーション非対応 - 視覚的再生のみ');
-        await playMorseVisualOnly(word);
+    const isVibrationSupported = checkVibrationSupport();
+    
+    if (!isVibrationSupported) {
+        console.warn('⚠️ バイブレーション非対応 - iPhone向け拡張視覚・音響再生');
+        await playMorseEnhancedVisual(word, stageNum);
         return;
     }
     
@@ -1913,6 +2261,155 @@ async function playVisualPattern(pattern, stageNum = 6) {
 // スリープ関数
 function sleep(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+// iPhone向け拡張視覚・音響モールス信号再生
+async function playMorseEnhancedVisual(word, stageNum = 6) {
+    console.log('📱 iPhone向け拡張モールス信号再生:', word);
+    
+    const morseStatus = document.getElementById(`morse-status-${stageNum}`);
+    const playButton = document.getElementById(`play-morse-btn-${stageNum}`);
+    
+    if (morseStatus) {
+        morseStatus.innerHTML = `
+            🍎 <strong>iPhone向け再生中: ${word}</strong><br>
+            <small>画面の点滅とサウンドでモールス信号を表現します</small>
+        `;
+        morseStatus.style.color = '#ffffff';
+    }
+    
+    if (playButton) {
+        playButton.disabled = true;
+        playButton.textContent = '📱 iPhone向け再生中...';
+    }
+    
+    // 音響フィードバック用のAudioContext
+    let audioContext = null;
+    try {
+        audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    } catch (error) {
+        console.warn('⚠️ 音響フィードバックが利用できません:', error);
+    }
+    
+    // 画面全体フラッシュ用のオーバーレイを作成
+    const flashOverlay = document.createElement('div');
+    flashOverlay.style.cssText = `
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(255, 255, 255, 0);
+        z-index: 9998;
+        pointer-events: none;
+        transition: background 0.1s ease;
+    `;
+    document.body.appendChild(flashOverlay);
+    
+    for (let i = 0; i < word.length; i++) {
+        const letter = word[i];
+        const pattern = morsePatterns[letter];
+        
+        if (pattern) {
+            console.log(`📡 再生中: ${letter} = ${pattern}`);
+            
+            for (let j = 0; j < pattern.length; j++) {
+                const signal = pattern[j];
+                
+                if (signal === '.') {
+                    // ドット: 短い音・短い点滅
+                    await playEnhancedSignal('dot', stageNum, audioContext, flashOverlay);
+                    await sleep(VIBRATION_SHORT);
+                } else if (signal === '-') {
+                    // ダッシュ: 長い音・長い点滅
+                    await playEnhancedSignal('dash', stageNum, audioContext, flashOverlay);
+                    await sleep(VIBRATION_LONG);
+                }
+                
+                // 信号間の休止
+                updateVisualFeedback('pause', '', stageNum);
+                await sleep(VIBRATION_PAUSE);
+            }
+            
+            // 文字完了の表示
+            updateVisualFeedback('letter', letter, stageNum);
+            await sleep(VIBRATION_LETTER_PAUSE);
+        }
+    }
+    
+    // オーバーレイを削除
+    if (flashOverlay && flashOverlay.parentNode) {
+        flashOverlay.remove();
+    }
+    
+    // AudioContextを閉じる
+    if (audioContext) {
+        try {
+            await audioContext.close();
+        } catch (error) {
+            console.warn('AudioContext終了エラー:', error);
+        }
+    }
+    
+    // UI更新
+    if (morseStatus) {
+        morseStatus.innerHTML = `
+            ✅ <strong>iPhone向け再生完了！</strong><br>
+            <small>"${word}" を入力してください</small>
+        `;
+        morseStatus.style.color = '#4CAF50';
+    }
+    
+    if (playButton) {
+        playButton.disabled = false;
+        playButton.textContent = '🔄 もう一度再生';
+    }
+    
+    updateVisualFeedback('clear', '', stageNum);
+    
+    console.log('✅ iPhone向けモールス信号再生完了');
+}
+
+// 拡張信号再生（音響＋視覚）
+async function playEnhancedSignal(type, stageNum, audioContext, flashOverlay) {
+    const duration = type === 'dot' ? VIBRATION_SHORT : VIBRATION_LONG;
+    const frequency = type === 'dot' ? 800 : 400; // ドットは高音、ダッシュは低音
+    
+    // 視覚的フィードバック
+    updateVisualFeedback(type, '', stageNum);
+    
+    // 画面フラッシュ
+    if (flashOverlay) {
+        const intensity = type === 'dot' ? 0.3 : 0.5;
+        flashOverlay.style.background = `rgba(255, 255, 255, ${intensity})`;
+        
+        setTimeout(() => {
+            flashOverlay.style.background = 'rgba(255, 255, 255, 0)';
+        }, duration);
+    }
+    
+    // 音響フィードバック
+    if (audioContext) {
+        try {
+            const oscillator = audioContext.createOscillator();
+            const gainNode = audioContext.createGain();
+            
+            oscillator.connect(gainNode);
+            gainNode.connect(audioContext.destination);
+            
+            oscillator.frequency.value = frequency;
+            oscillator.type = 'sine';
+            
+            gainNode.gain.setValueAtTime(0, audioContext.currentTime);
+            gainNode.gain.linearRampToValueAtTime(0.1, audioContext.currentTime + 0.01);
+            gainNode.gain.linearRampToValueAtTime(0, audioContext.currentTime + duration / 1000);
+            
+            oscillator.start();
+            oscillator.stop(audioContext.currentTime + duration / 1000);
+        } catch (error) {
+            console.warn('音響再生エラー:', error);
+        }
+    }
 }
 
 // 新しいモールス信号の単語を選択
@@ -2164,7 +2661,7 @@ function updateStageDisplay() {
 
 // ステージ選択ボタンの状態更新
 function updateStageButtons() {
-    for (let i = 0; i <= 7; i++) {
+    for (let i = 0; i <= 8; i++) {
         const btn = document.getElementById(`stage-btn-${i}`);
         if (btn) {
             // 全てのクラスをリセット
@@ -2319,6 +2816,22 @@ function resetStageState() {
                 stageStates.lightLevels = [];
                 stopLightSensor(); // カメラを停止
                 console.log('🔄 光センサーステージをリセット');
+                break;
+                
+            case 'hourglass':
+                // 砂時計ステージのリセット
+                stageStates.hourglassFlips = 0;
+                stageStates.isUpsideDown = false;
+                stageStates.sandProgress = 0;
+                stageStates.lastFlipTime = 0;
+                stageStates.hourglassRunning = false;
+                
+                // 砂時計のUI初期化
+                setTimeout(() => {
+                    initializeHourglassUI(currentStage);
+                }, 100);
+                
+                console.log('🔄 砂時計ステージをリセット');
                 break;
         }
     }
